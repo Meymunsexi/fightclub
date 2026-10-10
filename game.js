@@ -795,10 +795,29 @@ class GameManager {
     this.startRound();
   }
 
+  // Lobiye Yumuşak Dönüş (Bağlantıyı koparmadan lobiye dön)
+  returnToLobbyScreen() {
+    clearInterval(this.timerInterval);
+    this.state = 'LOBBY';
+    gameUI.classList.add('hidden');
+    gameOverModal.classList.add('hidden');
+    lobbyScreen.classList.remove('hidden');
+
+    fighters.forEach(f => f.wins = 0);
+    this.currentRound = 1;
+
+    if (network.isOnline && network.isHost) {
+      startOnlineMatchBtn.classList.remove('hidden');
+      hostStatus.textContent = 'Lobiye dönüldü. Hazır olduğunuzda tekrar başlatın!';
+    }
+  }
+
   returnToLobby() {
     clearInterval(this.timerInterval);
-    network.disconnect();
-    location.reload();
+    if (network.isOnline && network.isHost) {
+      network.broadcastReturnLobby();
+    }
+    this.returnToLobbyScreen();
   }
 }
 
@@ -1248,6 +1267,15 @@ network.onGameStart = () => {
   gameManager.startMatch();
 };
 
+network.onNextRound = () => {
+  gameManager.nextRound();
+  nextRoundBtn.textContent = 'SONRAKİ RAUNT';
+};
+
+network.onReturnLobby = () => {
+  gameManager.returnToLobbyScreen();
+};
+
 // ================= LOBİ ARAYÜZ VE BUTONLARI =================
 // Sekme geçişleri
 tabOnlineBtn.addEventListener('click', () => {
@@ -1333,7 +1361,17 @@ startLocalMatchBtn.addEventListener('click', () => {
 
 // Sonraki Raunt
 nextRoundBtn.addEventListener('click', () => {
-  gameManager.nextRound();
+  if (gameManager.mode === 'ONLINE') {
+    if (network.isHost) {
+      gameManager.nextRound();
+      network.broadcastNextRound();
+    } else {
+      network.requestNextRound();
+      nextRoundBtn.textContent = 'Kurucuya İletildi...';
+    }
+  } else {
+    gameManager.nextRound();
+  }
 });
 
 // Lobiye Dön

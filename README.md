@@ -33,23 +33,33 @@ Bu proje tamamen statik dosyalardan (`index.html`, `style.css`, `game.js`, `netw
 ## 🎮 Arkadaşlarla Nasıl Oynanır?
 
 1. **Kurucu (Host):**
-   - Oyuna girer ve **"Oda Kur & Kod Al"** butonuna basar.
-   - Oluşan oda kodunu ya da **"🔗 Katılım Linkini Kopyala"** butonuna basarak linki 2 arkadaşına WhatsApp/Discord'dan atar.
+   - **"Oda Kur & Kod Al"** butonuna basar.
+   - Oluşan 5 haneli kodu ya da **"🔗 Katılım Linkini Kopyala"** diyerek linki arkadaşlarına atar.
 2. **Katılımcılar (Misafirler):**
-   - Arkadaşları linke tıkladıklarında oda kodu otomatik dolar; sadece **"Katıl"** derler.
-3. **Başlangıç:**
-   - 2 veya 3 kişi bağlandığında kurucu **"DÖVÜŞÜ BAŞLAT!"** butonuna basar ve maç başlar!
+   - Arkadaşlarınız linke tıkladığı anda **hiçbir tuşa basmadan otomatik olarak odaya bağlanır!**
+3. **Başlangıç & Bot Desteği:**
+   - **Eksik Oyuncu mu Var?** Ekranda açık olan `🤖 Eksik oyuncuları BOT ile doldur` seçeneği sayesinde ister **1 kişi + 2 Bot**, ister **2 kişi + 1 Bot**, ister **3 gerçek kişi** hemen maçı başlatabilirsiniz!
+   - Canlı bağlantı durumu alt konsoldan anbean takip edilebilir.
+
+---
+
+## 🛡️ NAT & Güvenlik Duvarı Engelleri Çözüldü
+- **Açık TURN/STUN Röleleri Eklendi:** Farklı internet sağlayıcıları (Superonline, TTNet, Vodafone vb.) arasındaki CGNAT ve güvenlik duvarı engellerini aşmak için açık TURN aktarıcıları entegre edildi.
+- **Sıfır Çakışma:** Özel oda isim alanı (`cs3p_room_...`) sayesinde diğer oyunlarla oda kodu karışması engellendi.
 
 ---
 
 ## 🕹️ Kontroller
 
-### Online Modda (Herkes Kendi Bilgisayarında):
-- **W / A / S / D:** Koşma, Zıplama (Çift Zıplama destekli), Çökme
-- **F:** Seri Yumruk
-- **G:** Ağır Tekme (Yüksek hasar & geri savurma)
-- **H:** Özel Güç (Ateş / Buz / Yıldırım Topu - Enerji gerektirir)
-- **Space (Boşluk):** Blok Kalkanı (%80 hasar indirimi)
+### 🖱️ Mouse & Klavye (En Akıcı Deneyim):
+- **🖱️ Sol Tık:** Hızlı Yumruk (Light Punch)
+- **🖱️ Sağ Tık:** Ağır Tekme (Heavy Kick & Knockback)
+- **⚙️ Orta Tık (Tekerlek) veya Q / E:** Özel Yetenek (Ateş / Buz / Yıldırım Topu)
+- **🛡️ Space (Boşluk) veya Shift:** Blok Kalkanı (%80 hasar koruması)
+- **W / A / S / D:** Koşma, Çift Zıplama, Eğilme
+- **🎯 Mouse ile Yön Belirleme:** Mouse imleciniz hangi yöne bakarsa dövüşçünüz anında o yöne döner ve saldırıyı oraya yapar!
+
+*(İsteyen oyuncular klavyedeki F / G / H tuşlarıyla da klasik tarzda saldırabilir).*
 
 ---
 

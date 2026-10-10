@@ -1,15 +1,15 @@
-// WebRTC PeerJS Gelişmiş Ağ Yöneticisi (NAT Delme & TURN/STUN Desteği)
+// WebRTC PeerJS Gelişmiş Ağ Yöneticisi (NAT Delme, Heartbeat & Kusursuz Yeniden Bağlanma)
 class NetworkManager {
   constructor() {
     this.peer = null;
     this.myPeerId = null;
     this.isHost = false;
     this.roomCode = null;
-    this.connections = []; // Host: [ { conn, playerId: 2 }, { conn, playerId: 3 } ]
+    this.connections = []; // Host: [ { conn, playerId, missedHeartbeats: 0 } ]
     this.hostConn = null; // Client: host bağlantısı
     this.localPlayerId = 1;
     this.isOnline = false;
-    this.botEnabled = true; // Boş slotları AI bot doldurur
+    this.botEnabled = true;
 
     this.playerSlots = {
       1: { connected: false, name: 'Oyuncu 1 (Kırmızı)', isBot: false },
@@ -17,11 +17,17 @@ class NetworkManager {
       3: { connected: false, name: 'Oyuncu 3 (Yeşil)', isBot: false }
     };
 
+    this.heartbeatTimer = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+
     // Callback dinleyicileri
     this.onStateUpdate = null;
     this.onInputReceived = null;
     this.onLobbyChange = null;
     this.onGameStart = null;
+    this.onNextRound = null;
+    this.onReturnLobby = null;
     this.onLog = null;
   }
 
@@ -30,17 +36,14 @@ class NetworkManager {
     if (this.onLog) this.onLog(msg, type);
   }
 
-  // 5 Haneli Temiz Oda Numarası
   generateRoomCode() {
     return Math.floor(10000 + Math.random() * 90000).toString();
   }
 
-  // Global çakışmayı önlemek için benzersiz Peer ID
   getPeerIdForRoom(code) {
     return `cs3p_room_${code}`;
   }
 
-  // Gelişmiş ICE / STUN / TURN Yapılandırması (Türkiye ISP'leri & CGNAT Desteği)
   getIceConfig() {
     return {
       iceServers: [
@@ -71,6 +74,56 @@ class NetworkManager {
     };
   }
 
+  // Ölü veya kopmuş bağlantıları temizle (Slotları anında serbest bırak)
+  auditConnections() {
+    let changed = false;
+
+    // Açık olmayan bağlantıları listeden çıkar
+    for (let i = this.connections.length - 1; i >= 0; i--) {
+      const entry = this.connections[i];
+      if (!entry.conn || !entry.conn.open || entry.missedHeartbeats >= 4) {
+        this.log(`⚠️ Oyuncu ${entry.playerId} bağlantısı koptu (slot boşaltıldı).`, 'warn');
+        this.playerSlots[entry.playerId].connected = false;
+        try { if (entry.conn) entry.conn.close(); } catch(e) {}
+        this.connections.splice(i, 1);
+        changed = true;
+      }
+    }
+
+    // Slot 2 ve 3 kontrolü
+    [2, 3].forEach(id => {
+      const hasActive = this.connections.some(c => c.playerId === id && c.conn && c.conn.open);
+      if (!hasActive && this.playerSlots[id].connected) {
+        this.playerSlots[id].connected = false;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      this.broadcastLobby();
+      if (this.onLobbyChange) this.onLobbyChange(this.playerSlots);
+    }
+  }
+
+  // Host: Heartbeat (Nabız) Başlat
+  startHeartbeat() {
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.isHost) return;
+
+      this.connections.forEach(entry => {
+        if (entry.conn && entry.conn.open) {
+          entry.missedHeartbeats = (entry.missedHeartbeats || 0) + 1;
+          try {
+            entry.conn.send({ type: 'PING' });
+          } catch(e) {}
+        }
+      });
+
+      this.auditConnections();
+    }, 1500);
+  }
+
   // 1. Oda Kur (Host)
   createRoom(onReady, onError) {
     this.isHost = true;
@@ -81,7 +134,9 @@ class NetworkManager {
 
     this.log(`Oda sunucusuna bağlanılıyor (Kod: ${this.roomCode})...`);
 
-    if (this.peer) this.peer.destroy();
+    if (this.peer) {
+      try { this.peer.destroy(); } catch(e) {}
+    }
 
     this.peer = new Peer(peerId, {
       debug: 1,
@@ -94,35 +149,53 @@ class NetworkManager {
       this.playerSlots[1].name = 'Sen (Host - P1)';
       this.playerSlots[1].isBot = false;
 
-      this.log(`✅ Oda açıldı! Kod: ${this.roomCode}. Arkadaşlarını bekle.`, 'success');
+      this.log(`✅ Oda açıldı! Kod: ${this.roomCode}. Arkadaşların katılabilir.`, 'success');
+      this.startHeartbeat();
+
       if (onReady) onReady(this.roomCode);
       if (this.onLobbyChange) this.onLobbyChange(this.playerSlots);
     });
 
-    // Misafir bağlantılarını kabul et
+    // Misafir bağlantısı kabul et
     this.peer.on('connection', (conn) => {
-      this.log(`Bir oyuncu bağlanmaya çalışıyor...`);
+      this.log(`Yeni oyuncu bağlanmaya çalışıyor...`);
+
+      // Önce mevcut bağlantıları denetle (düşen varsa hemen temizle)
+      this.auditConnections();
 
       // Boş slot bul (2 veya 3)
       let assignedId = null;
       if (!this.playerSlots[2].connected) assignedId = 2;
       else if (!this.playerSlots[3].connected) assignedId = 3;
 
+      // Eğer slotlar dolu görünüyorsa ama eski bir bağlantı kapalıysa o slotu al
       if (!assignedId) {
-        this.log(`❌ Oda dolu! Yeni bağlantı reddedildi.`, 'warn');
-        conn.close();
+        for (let i = 0; i < this.connections.length; i++) {
+          if (!this.connections[i].conn || !this.connections[i].conn.open) {
+            assignedId = this.connections[i].playerId;
+            this.connections.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      if (!assignedId) {
+        this.log(`❌ Oda dolu! (Zaten 3 kişi var).`, 'warn');
+        try { conn.send({ type: 'ROOM_FULL' }); } catch(e) {}
+        setTimeout(() => conn.close(), 500);
         return;
       }
 
-      this.playerSlots[assignedId].connected = true;
-      this.playerSlots[assignedId].name = `Arkadaşın (P${assignedId})`;
-      this.playerSlots[assignedId].isBot = false;
-
       conn.on('open', () => {
         this.log(`🎉 Oyuncu ${assignedId} başarıyla odaya bağlandı!`, 'success');
-        this.connections.push({ conn, playerId: assignedId });
+        this.playerSlots[assignedId].connected = true;
+        this.playerSlots[assignedId].name = `Arkadaşın (P${assignedId})`;
+        this.playerSlots[assignedId].isBot = false;
 
-        // Misafire hoş geldin ve slot bilgisini gönder
+        // Eski kaydı varsa çıkar
+        this.connections = this.connections.filter(c => c.playerId !== assignedId);
+        this.connections.push({ conn, playerId: assignedId, missedHeartbeats: 0 });
+
         conn.send({
           type: 'WELCOME',
           assignedPlayerId: assignedId,
@@ -134,13 +207,18 @@ class NetworkManager {
       });
 
       conn.on('data', (data) => {
-        if (data.type === 'INPUT' && this.onInputReceived) {
+        if (data.type === 'PONG') {
+          const entry = this.connections.find(c => c.conn === conn);
+          if (entry) entry.missedHeartbeats = 0;
+        } else if (data.type === 'INPUT' && this.onInputReceived) {
           this.onInputReceived(data.playerId, data.inputs);
+        } else if (data.type === 'REQUEST_NEXT_ROUND' && this.onNextRound) {
+          this.onNextRound();
         }
       });
 
       conn.on('close', () => {
-        this.log(`⚠️ Oyuncu ${assignedId} odadan ayrıldı.`, 'warn');
+        this.log(`⚠️ Oyuncu ${assignedId} ayrıldı.`, 'warn');
         this.playerSlots[assignedId].connected = false;
         this.connections = this.connections.filter(c => c.conn !== conn);
         this.broadcastLobby();
@@ -148,14 +226,14 @@ class NetworkManager {
       });
 
       conn.on('error', (err) => {
-        this.log(`Bağlantı hatası: ${err.message || err}`, 'error');
+        this.log(`Bağlantı hatası (P${assignedId}): ${err.message || err}`, 'warn');
+        this.auditConnections();
       });
     });
 
     this.peer.on('error', (err) => {
       this.log(`❌ Sunucu hatası: ${err.type || err}`, 'error');
       if (err.type === 'unavailable-id') {
-        // Çakışma varsa yeni kodla hemen tekrar dene
         this.createRoom(onReady, onError);
       } else if (onError) {
         onError(err);
@@ -163,12 +241,12 @@ class NetworkManager {
     });
 
     this.peer.on('disconnected', () => {
-      this.log(`Bağlantı kesildi, tekrar deneniyor...`, 'warn');
-      this.peer.reconnect();
+      this.log(`Sunucu bağlantısı koptu, yeniden bağlanılıyor...`, 'warn');
+      try { this.peer.reconnect(); } catch(e) {}
     });
   }
 
-  // 2. Odaya Katıl (Client / Misafir)
+  // 2. Odaya Katıl (Client)
   joinRoom(targetCode, onSuccess, onError) {
     this.isHost = false;
     this.isOnline = true;
@@ -177,9 +255,10 @@ class NetworkManager {
 
     this.log(`Oda ${this.roomCode} aranıyor...`);
 
-    if (this.peer) this.peer.destroy();
+    if (this.peer) {
+      try { this.peer.destroy(); } catch(e) {}
+    }
 
-    // Client için rastgele peer oluştur
     this.peer = new Peer({
       debug: 1,
       config: this.getIceConfig()
@@ -188,32 +267,35 @@ class NetworkManager {
     this.peer.on('open', () => {
       this.log(`Kurucuya bağlanılıyor (${hostPeerId})...`);
 
-      // reliable: true ile güvenli veri kanalı
       const conn = this.peer.connect(hostPeerId, {
         reliable: true
       });
       this.hostConn = conn;
 
-      // 8 saniye zaman aşımı kontrolü
+      let isConnected = false;
       const timeout = setTimeout(() => {
-        if (!conn.open) {
-          this.log(`❌ Zaman aşımı! Kurucu odayı henüz açmamış veya kod yanlış olabilir.`, 'error');
-          if (onError) onError('Zaman aşımı! Oda bulunamadı.');
+        if (!isConnected && (!conn || !conn.open)) {
+          this.log(`❌ Zaman aşımı! Kurucunun odayı açtığından emin olun.`, 'error');
+          if (onError) onError('Zaman aşımı! Kurucu henüz odayı açmamış olabilir.');
         }
-      }, 9000);
+      }, 10000);
 
       conn.on('open', () => {
+        isConnected = true;
         clearTimeout(timeout);
-        this.log(`✅ Odaya başarıyla bağlandın! Kurucunun başlatması bekleniyor.`, 'success');
+        this.reconnectAttempts = 0;
+        this.log(`✅ Odaya bağlandın! Kurucu başlattığında oyun başlayacak.`, 'success');
         if (onSuccess) onSuccess();
       });
 
       conn.on('data', (data) => {
-        if (data.type === 'WELCOME') {
+        if (data.type === 'PING') {
+          try { conn.send({ type: 'PONG' }); } catch(e) {}
+        } else if (data.type === 'WELCOME') {
           this.localPlayerId = data.assignedPlayerId;
           this.playerSlots = data.slots;
           this.playerSlots[this.localPlayerId].name = `Sen (P${this.localPlayerId})`;
-          this.log(`Dövüşçün belirlendi: OYUNCU ${this.localPlayerId}`, 'info');
+          this.log(`Dövüşçün hazır: OYUNCU ${this.localPlayerId}`, 'info');
           if (this.onLobbyChange) this.onLobbyChange(this.playerSlots);
         } else if (data.type === 'LOBBY_UPDATE') {
           this.playerSlots = data.slots;
@@ -222,21 +304,27 @@ class NetworkManager {
         } else if (data.type === 'START_GAME') {
           this.log(`🔥 DÖVÜŞ BAŞLIYOR!`, 'success');
           if (this.onGameStart) this.onGameStart();
+        } else if (data.type === 'NEXT_ROUND') {
+          if (this.onNextRound) this.onNextRound();
+        } else if (data.type === 'RETURN_LOBBY') {
+          if (this.onReturnLobby) this.onReturnLobby();
         } else if (data.type === 'STATE_SNAPSHOT') {
           if (this.onStateUpdate) this.onStateUpdate(data.payload);
+        } else if (data.type === 'ROOM_FULL') {
+          this.log(`❌ Bu oda şu an tamamen dolu!`, 'error');
+          alert('Bu oda dolu! Lütfen kurucunun birini çıkarmasını veya yeni oda açmasını isteyin.');
         }
       });
 
       conn.on('close', () => {
-        this.log(`⚠️ Kurucu ile bağlantı koptu.`, 'warn');
-        alert('Oda kurucusuyla bağlantı koptu!');
-        location.reload();
+        this.log(`⚠️ Kurucu ile bağlantı koptu. Yeniden deneniyor...`, 'warn');
+        this.handleAutoReconnect();
       });
 
       conn.on('error', (err) => {
         clearTimeout(timeout);
-        this.log(`Bağlantı hatası: ${err.message || err}`, 'error');
-        if (onError) onError(err);
+        this.log(`Bağlantı hatası: ${err.message || err}`, 'warn');
+        this.handleAutoReconnect();
       });
     });
 
@@ -246,54 +334,96 @@ class NetworkManager {
     });
   }
 
-  // Lobi durumunu tüm bağlı clientlara gönder
+  // Otomatik yeniden bağlanma
+  handleAutoReconnect() {
+    if (this.isHost || !this.roomCode) return;
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      this.log(`🔄 Tekrar bağlanılıyor (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, 'info');
+      setTimeout(() => {
+        this.joinRoom(this.roomCode, null, null);
+      }, 2000);
+    } else {
+      this.log(`❌ Bağlantı kurulamadı. Sayfayı yenileyip kodu tekrar deneyin.`, 'error');
+    }
+  }
+
+  // Lobi bilgisini herkese dağıt
   broadcastLobby() {
     this.connections.forEach(({ conn }) => {
       if (conn && conn.open) {
-        conn.send({
-          type: 'LOBBY_UPDATE',
-          slots: this.playerSlots
-        });
+        try {
+          conn.send({
+            type: 'LOBBY_UPDATE',
+            slots: this.playerSlots
+          });
+        } catch(e) {}
       }
     });
   }
 
-  // Oyunu başlat
   broadcastStartGame() {
     this.connections.forEach(({ conn }) => {
       if (conn && conn.open) {
-        conn.send({ type: 'START_GAME' });
+        try { conn.send({ type: 'START_GAME' }); } catch(e) {}
       }
     });
   }
 
-  // Host: Oyun durumu snapshot'ını yayınla
+  broadcastNextRound() {
+    this.connections.forEach(({ conn }) => {
+      if (conn && conn.open) {
+        try { conn.send({ type: 'NEXT_ROUND' }); } catch(e) {}
+      }
+    });
+  }
+
+  broadcastReturnLobby() {
+    this.connections.forEach(({ conn }) => {
+      if (conn && conn.open) {
+        try { conn.send({ type: 'RETURN_LOBBY' }); } catch(e) {}
+      }
+    });
+  }
+
   broadcastState(statePayload) {
     if (!this.isHost) return;
     this.connections.forEach(({ conn }) => {
       if (conn && conn.open) {
-        conn.send({
-          type: 'STATE_SNAPSHOT',
-          payload: statePayload
-        });
+        try {
+          conn.send({
+            type: 'STATE_SNAPSHOT',
+            payload: statePayload
+          });
+        } catch(e) {}
       }
     });
   }
 
-  // Client: Tuşları host'a gönder
   sendInputs(inputs) {
     if (this.hostConn && this.hostConn.open) {
-      this.hostConn.send({
-        type: 'INPUT',
-        playerId: this.localPlayerId,
-        inputs
-      });
+      try {
+        this.hostConn.send({
+          type: 'INPUT',
+          playerId: this.localPlayerId,
+          inputs
+        });
+      } catch(e) {}
+    }
+  }
+
+  requestNextRound() {
+    if (this.hostConn && this.hostConn.open) {
+      try {
+        this.hostConn.send({ type: 'REQUEST_NEXT_ROUND' });
+      } catch(e) {}
     }
   }
 
   disconnect() {
+    clearInterval(this.heartbeatTimer);
     if (this.peer) {
-      this.peer.destroy();
+      try { this.peer.destroy(); } catch(e) {}
     }
     this.connections = [];
     this.hostConn = null;
