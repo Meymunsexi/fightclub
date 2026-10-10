@@ -73,6 +73,22 @@
           </div>
         </div>
 
+        <!-- Bot Desteği & Seçenekler -->
+        <div class="lobby-options-row">
+          <label class="bot-option">
+            <input type="checkbox" id="botToggle" checked>
+            <span>🤖 Eksik oyuncuları BOT (Yapay Zeka) ile doldur (Tek başına veya 2 kişi de oynanabilir!)</span>
+          </label>
+        </div>
+
+        <!-- Canlı Bağlantı Günlüğü (Log Konsolu) -->
+        <div class="console-wrapper">
+          <div class="console-title">📡 CANLI BAĞLANTI DURUMU</div>
+          <div id="connection-log" class="connection-log">
+            <div class="log-item info">⚡ Sistem hazır. Bir oda kurun veya arkadaşınızın odasına bağlanın.</div>
+          </div>
+        </div>
+
         <div class="lobby-action-row">
           <button id="startOnlineMatchBtn" class="start-btn hidden">DÖVÜŞÜ BAŞLAT!</button>
           <div id="wait-host-text" class="hint-text hidden">Kurucunun oyunu başlatması bekleniyor...</div>
@@ -159,7 +175,7 @@
         <div class="controls-overview">
           <div class="ctrl-col" id="my-controls-display">
             <strong>KONTROLLERİNİZ:</strong>
-            <span id="ctrl-hints">A/D: Yürü | W: Zıpla | S: Çök | F: Yumruk | G: Tekme | H: Ateş Topu | Space: Blok</span>
+            <span id="ctrl-hints">🖱️ Sol Tık: Yumruk | 🖱️ Sağ Tık: Ağır Tekme | ⚙️ Orta Tık / Q: Ateş Topu | Space / Shift: Blok | W/A/S/D: Hareket</span>
           </div>
         </div>
         <div class="footer-actions">

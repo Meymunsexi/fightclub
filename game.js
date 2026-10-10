@@ -24,6 +24,8 @@ const joinStatus = document.getElementById('joinStatus');
 const startOnlineMatchBtn = document.getElementById('startOnlineMatchBtn');
 const waitHostText = document.getElementById('wait-host-text');
 const startLocalMatchBtn = document.getElementById('startLocalMatchBtn');
+const botToggle = document.getElementById('botToggle');
+const connectionLog = document.getElementById('connection-log');
 
 // HUD Elementleri (3 Oyuncu)
 const p1HealthBar = document.getElementById('p1-health');
@@ -69,8 +71,21 @@ const platforms = [
   { x: canvas.width / 2 - 120, y: FLOOR_Y - 260, width: 240, height: 18 }
 ];
 
-// Klavye Takip
+// Klavye ve Mouse Takip Sistemi
 const keys = {};
+const mouse = {
+  x: 0,
+  y: 0,
+  leftDown: false,
+  rightDown: false,
+  middleDown: false
+};
+
+// Sağ tık tarayıcı menüsünü engelle (Sağ tık ile tekme atabilmek için)
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
@@ -79,6 +94,28 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
+});
+
+// Mouse Tuşları Dinleme
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 0) mouse.leftDown = true;  // Sol tık (Yumruk)
+  if (e.button === 2) mouse.rightDown = true; // Sağ tık (Tekme)
+  if (e.button === 1) mouse.middleDown = true;// Orta tık (Özel Güç)
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) mouse.leftDown = false;
+  if (e.button === 2) mouse.rightDown = false;
+  if (e.button === 1) mouse.middleDown = false;
+});
+
+// Mouse Konumunu Canvas Koordinatına Dönüştürme
+window.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mouse.x = (e.clientX - rect.left) * scaleX;
+  mouse.y = (e.clientY - rect.top) * scaleY;
 });
 
 // Parçacık Sistemi
@@ -218,14 +255,19 @@ class Fighter {
     this.isBlocking = inputState.block && !this.isAttacking;
     this.isCrouching = inputState.down && this.isGrounded && !this.isAttacking;
 
+    // Mouse ile Yön Belirleme (İmleç nereye bakarsa dövüşçü oraya döner)
+    if (inputState.facing && !this.isAttacking) {
+      this.facing = inputState.facing;
+    }
+
     // Yatay Hareket
     if (!this.isBlocking && !this.isCrouching && !this.isAttacking) {
       if (inputState.left) {
         this.vx = -this.speed;
-        this.facing = -1;
+        if (!inputState.facing) this.facing = -1;
       } else if (inputState.right) {
         this.vx = this.speed;
-        this.facing = 1;
+        if (!inputState.facing) this.facing = 1;
       } else {
         this.vx = 0;
       }
@@ -844,32 +886,50 @@ function drawArena() {
   }
 }
 
-// Oyuncu Tuş Girişlerini Toplama
+// Oyuncu Tuş ve Mouse Girişlerini Toplama
 function collectLocalInputs() {
+  // Yerel oyuncuyu tespit et ve mouse yönünü hesapla
+  let localFighter = null;
   if (gameManager.mode === 'ONLINE') {
-    // Online modda her oyuncu kendi bilgisayarında rahat standart tuşları kullanır
+    localFighter = fighters.find(f => f.id === network.localPlayerId);
+  } else {
+    localFighter = fighters[0]; // Yerel modda P1 mouse kullanır
+  }
+
+  let mouseFacing = null;
+  if (localFighter && mouse.x > 0) {
+    mouseFacing = mouse.x < (localFighter.x + localFighter.width / 2) ? -1 : 1;
+  }
+
+  if (gameManager.mode === 'ONLINE') {
     return {
       left: keys['KeyA'] || keys['ArrowLeft'],
       right: keys['KeyD'] || keys['ArrowRight'],
       up: keys['KeyW'] || keys['ArrowUp'],
       down: keys['KeyS'] || keys['ArrowDown'],
-      punch: keys['KeyF'] || keys['KeyK'],
-      kick: keys['KeyG'] || keys['KeyL'],
-      special: keys['KeyH'] || keys['KeyO'],
-      block: keys['Space'] || keys['KeyP']
+      // 🖱️ Sol Tık veya F / K: Yumruk
+      punch: mouse.leftDown || keys['KeyF'] || keys['KeyK'],
+      // 🖱️ Sağ Tık veya G / L: Ağır Tekme
+      kick: mouse.rightDown || keys['KeyG'] || keys['KeyL'],
+      // ⚙️ Orta Tık veya Q / E / H / O: Özel Ateş/Buz Topu
+      special: mouse.middleDown || keys['KeyQ'] || keys['KeyE'] || keys['KeyH'] || keys['KeyO'],
+      // 🛡️ Space / Shift / P: Blok Kalkanı
+      block: keys['Space'] || keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyP'],
+      facing: mouseFacing
     };
   } else {
-    // Yerel modda (Aynı klavyede 3 kişi)
+    // Yerel modda (P1: Mouse + WASD, P2: Oklar+KL, P3: IJKL+UY)
     return {
       p1: {
         left: keys['KeyA'],
         right: keys['KeyD'],
         up: keys['KeyW'],
         down: keys['KeyS'],
-        punch: keys['KeyF'],
-        kick: keys['KeyG'],
-        special: keys['KeyH'],
-        block: keys['Space']
+        punch: mouse.leftDown || keys['KeyF'],
+        kick: mouse.rightDown || keys['KeyG'],
+        special: mouse.middleDown || keys['KeyQ'] || keys['KeyH'],
+        block: keys['Space'] || keys['ShiftLeft'],
+        facing: mouseFacing
       },
       p2: {
         left: keys['ArrowLeft'],
@@ -893,6 +953,37 @@ function collectLocalInputs() {
       }
     };
   }
+}
+
+// Yapay Zeka (AI Bot) Beyni
+function getBotInput(bot, opponents) {
+  const living = opponents.filter(o => o.isAlive);
+  if (living.length === 0) return {};
+
+  let closest = living[0];
+  let minDist = Math.abs(living[0].x - bot.x);
+  for (let i = 1; i < living.length; i++) {
+    const dist = Math.abs(living[i].x - bot.x);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = living[i];
+    }
+  }
+
+  const dx = closest.x - bot.x;
+  const dy = closest.y - bot.y;
+  const inRange = Math.abs(dx) < 68;
+
+  return {
+    left: dx < -35,
+    right: dx > 35,
+    up: dy < -45 || (Math.random() < 0.025),
+    down: false,
+    punch: inRange && Math.random() < 0.22,
+    kick: inRange && Math.random() < 0.16,
+    special: !inRange && Math.abs(dx) < 320 && bot.energy >= 25 && Math.random() < 0.06,
+    block: inRange && closest.isAttacking && Math.random() < 0.3
+  };
 }
 
 // Ana Oyun Döngüsü
@@ -924,9 +1015,19 @@ function gameLoop() {
       // Host: Kendi girdilerini uygula
       fighters[0].applyInputs(myInputs);
 
-      // Misafirlerin gelen girdilerini uygula
-      if (gameManager.clientInputs[2]) fighters[1].applyInputs(gameManager.clientInputs[2]);
-      if (gameManager.clientInputs[3]) fighters[2].applyInputs(gameManager.clientInputs[3]);
+      // P2: Gerçek oyuncu mu yoksa Bot mu?
+      if (network.playerSlots[2].connected && gameManager.clientInputs[2]) {
+        fighters[1].applyInputs(gameManager.clientInputs[2]);
+      } else if (botToggle && botToggle.checked) {
+        fighters[1].applyInputs(getBotInput(fighters[1], [fighters[0], fighters[2]]));
+      }
+
+      // P3: Gerçek oyuncu mu yoksa Bot mu?
+      if (network.playerSlots[3].connected && gameManager.clientInputs[3]) {
+        fighters[2].applyInputs(gameManager.clientInputs[3]);
+      } else if (botToggle && botToggle.checked) {
+        fighters[2].applyInputs(getBotInput(fighters[2], [fighters[0], fighters[1]]));
+      }
 
       fighters.forEach(f => f.updatePhysics());
       checkCombatCollisions();
@@ -1005,6 +1106,21 @@ function gameLoop() {
   // 4. Dövüşçüleri Çiz
   fighters.forEach(f => f.draw());
 
+  // 5. Mouse Nişangahı (Crosshair)
+  if (gameManager.state === 'FIGHTING' && mouse.x > 0 && mouse.y > 0) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2);
+    ctx.moveTo(mouse.x - 11, mouse.y);
+    ctx.lineTo(mouse.x + 11, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y - 11);
+    ctx.lineTo(mouse.x, mouse.y + 11);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.restore();
 
   updateHUD();
@@ -1071,26 +1187,61 @@ network.onStateUpdate = (payload) => {
   });
 };
 
-// Lobi Güncellemesi (Slotların doluluğu)
+// Canlı Log Kaydı Konsolu
+network.onLog = (msg, type = 'info') => {
+  if (!connectionLog) return;
+  const item = document.createElement('div');
+  item.className = `log-item ${type}`;
+  const now = new Date();
+  const timeStr = now.toTimeString().split(' ')[0];
+  item.textContent = `[${timeStr}] ${msg}`;
+  connectionLog.appendChild(item);
+  connectionLog.scrollTop = connectionLog.scrollHeight;
+};
+
+// Lobi Güncellemesi (Slotların doluluğu ve Botlar)
 network.onLobbyChange = (slots) => {
+  const isBotActive = botToggle && botToggle.checked;
+
   for (let id = 1; id <= 3; id++) {
     const roleEl = document.getElementById(`slot-role-${id}`);
     if (slots[id] && slots[id].connected) {
       roleEl.textContent = slots[id].name;
       roleEl.classList.add('ready');
     } else {
-      roleEl.textContent = 'Bekleniyor...';
-      roleEl.classList.remove('ready');
+      if (isBotActive && id !== 1) {
+        roleEl.textContent = '🤖 BOT (Yapay Zeka)';
+        roleEl.classList.add('ready');
+      } else {
+        roleEl.textContent = 'Bekleniyor...';
+        roleEl.classList.remove('ready');
+      }
     }
   }
 
-  // En az 2 kişi varsa kurucu maçı başlatabilir
   const connectedCount = Object.values(slots).filter(s => s.connected).length;
-  if (network.isHost && connectedCount >= 2) {
-    startOnlineMatchBtn.classList.remove('hidden');
-    hostStatus.textContent = `${connectedCount} / 3 Oyuncu Hazır!`;
+  // Botlar açıksa kurucu tek başına bile başlatabilir; kapalıysa en az 2 kişi gerekir
+  if (network.isHost) {
+    if (connectedCount >= 2 || (isBotActive && connectedCount >= 1)) {
+      startOnlineMatchBtn.classList.remove('hidden');
+      const botCount = 3 - connectedCount;
+      if (botCount > 0 && isBotActive) {
+        hostStatus.textContent = `${connectedCount} Oyuncu + ${botCount} Bot Hazır!`;
+        startOnlineMatchBtn.textContent = `DÖVÜŞÜ BAŞLAT (${connectedCount}P + ${botCount} Bot)`;
+      } else {
+        hostStatus.textContent = `${connectedCount} / 3 Oyuncu Hazır!`;
+        startOnlineMatchBtn.textContent = 'DÖVÜŞÜ BAŞLAT!';
+      }
+    }
   }
 };
+
+botToggle.addEventListener('change', () => {
+  if (network.isHost) {
+    network.broadcastLobby();
+    network.onLobbyChange(network.playerSlots);
+  }
+});
 
 network.onGameStart = () => {
   gameManager.mode = 'ONLINE';
@@ -1123,6 +1274,9 @@ createRoomBtn.addEventListener('click', () => {
     hostInfo.classList.remove('hidden');
     createRoomBtn.classList.add('hidden');
     hostStatus.textContent = 'Arkadaşlarını bekliyor... (Link veya kodu paylaş)';
+  }, (err) => {
+    createRoomBtn.disabled = false;
+    createRoomBtn.textContent = 'Tekrar Dene';
   });
 });
 
@@ -1158,9 +1312,9 @@ joinRoomBtn.addEventListener('click', () => {
     waitHostText.classList.remove('hidden');
     joinRoomBtn.classList.add('hidden');
   }, (err) => {
-    alert('Odaya bağlanılamadı! Oda kodunu kontrol edin.');
-    joinStatus.classList.add('hidden');
+    joinStatus.textContent = 'Bağlantı kurulamadı. Kodu kontrol edip tekrar deneyin.';
     joinRoomBtn.disabled = false;
+    joinRoomBtn.classList.remove('hidden');
   });
 });
 
@@ -1195,13 +1349,17 @@ toggleAudioBtn.addEventListener('click', () => {
   toggleAudioBtn.textContent = isEnabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı';
 });
 
-// URL Parametresinden Otomatik Oda Kodu Doldurma
+// URL Parametresinden Otomatik Bağlanma (Tek Tıkla Giriş)
 window.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const room = params.get('room');
   if (room) {
-    joinRoomCode.value = room.toUpperCase();
+    joinRoomCode.value = room.trim();
     tabOnlineBtn.click();
+    // Arkadaş linke tıkladığı an 0.4 saniye içinde otomatik katılsın!
+    setTimeout(() => {
+      joinRoomBtn.click();
+    }, 400);
   }
 });
 

@@ -266,10 +266,75 @@ input[type="text"] {
   color: #8878ab;
 }
 
-.slot-role.ready {
-  color: #00ff88;
-  text-shadow: 0 0 8px #00ff88;
+/* Bot Seçeneği */
+.lobby-options-row {
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: center;
 }
+
+.bot-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(40, 28, 70, 0.7);
+  border: 1px solid #6c47b5;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fffa65;
+  transition: 0.2s;
+}
+
+.bot-option:hover {
+  background: rgba(55, 38, 95, 0.9);
+  border-color: #ffd000;
+}
+
+.bot-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #00ff88;
+  cursor: pointer;
+}
+
+/* Canlı Bağlantı Konsolu */
+.console-wrapper {
+  background: #0d0918;
+  border: 1px solid #3c2a63;
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.console-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: #00d2ff;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+
+.connection-log {
+  max-height: 90px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.log-item {
+  color: #bbb;
+}
+.log-item.info { color: #8ec5fc; }
+.log-item.success { color: #00ff88; font-weight: bold; }
+.log-item.warn { color: #ffcc00; }
+.log-item.error { color: #ff3366; font-weight: bold; }
 
 .lobby-action-row {
   display: flex;
@@ -440,6 +505,7 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
+  cursor: crosshair;
 }
 
 .banner-overlay {
