@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYBER STRIKE - 3 Kişilik Online Dövüş Arenası</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@600;700;900&display=swap" rel="stylesheet">
+  <!-- PeerJS WebRTC Kütüphanesi (Netlify / GitHub Pages için sıfır sunucu ile çalışır) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <div class="game-wrapper">
+
+    <!-- Lobi & Bağlantı Menüsü -->
+    <div id="lobby-screen" class="lobby-card">
+      <h1 class="logo-text">CYBER STRIKE</h1>
+      <p class="tagline">🔥 3 Kişilik Online & Yerel Dövüş Arenası 🔥</p>
+
+      <div class="mode-select-tabs">
+        <button id="tabOnlineBtn" class="tab-btn active">🌐 ONLİNE MOD (PEER-TO-PEER)</button>
+        <button id="tabLocalBtn" class="tab-btn">💻 YEREL MOD (AYNI KLAVYE)</button>
+      </div>
+
+      <!-- Online Sekmesi -->
+      <div id="online-panel" class="tab-content active">
+        <div class="host-join-grid">
+          <!-- Oda Kur (Host) -->
+          <div class="lobby-box">
+            <h3>🏠 ODA KUR (KURUCU)</h3>
+            <p>Odayı sen kur, oda kodunu veya linkini 2 arkadaşına at!</p>
+            <button id="createRoomBtn" class="primary-btn">Oda Kur & Kod Al</button>
+            
+            <div id="host-info" class="room-info-box hidden">
+              <label>Oda Kodunuz:</label>
+              <div class="code-copy-row">
+                <input type="text" id="myRoomCode" readonly>
+                <button id="copyCodeBtn" class="small-btn">Kodu Kopyala</button>
+              </div>
+              <button id="copyLinkBtn" class="link-btn">🔗 Katılım Linkini Kopyala</button>
+              <div class="status-badge" id="hostStatus">Oyuncular bekleniyor...</div>
+            </div>
+          </div>
+
+          <!-- Odaya Katıl (Client) -->
+          <div class="lobby-box">
+            <h3>🚀 ODAYA KATIL</h3>
+            <p>Arkadaşının verdiği oda kodunu gir ve arenaya katıl!</p>
+            <div class="input-row">
+              <input type="text" id="joinRoomCode" placeholder="Örn: CYBER-9821" maxlength="15">
+              <button id="joinRoomBtn" class="primary-btn">Katıl</button>
+            </div>
+            <div class="status-badge hidden" id="joinStatus">Bağlanıyor...</div>
+          </div>
+        </div>
+
+        <!-- Oyuncu Slotları (3 Kişilik Lobi) -->
+        <div class="players-lobby-grid">
+          <div class="player-slot slot-p1" id="slot-1">
+            <div class="slot-avatar">🔴</div>
+            <div class="slot-name">1. OYUNCU (KIRMIZI)</div>
+            <div class="slot-role" id="slot-role-1">Boş</div>
+          </div>
+          <div class="player-slot slot-p2" id="slot-2">
+            <div class="slot-avatar">🔵</div>
+            <div class="slot-name">2. OYUNCU (MAVİ)</div>
+            <div class="slot-role" id="slot-role-2">Boş</div>
+          </div>
+          <div class="player-slot slot-p3" id="slot-3">
+            <div class="slot-avatar">🟢</div>
+            <div class="slot-name">3. OYUNCU (YEŞİL)</div>
+            <div class="slot-role" id="slot-role-3">Boş</div>
+          </div>
+        </div>
+
+        <div class="lobby-action-row">
+          <button id="startOnlineMatchBtn" class="start-btn hidden">DÖVÜŞÜ BAŞLAT!</button>
+          <div id="wait-host-text" class="hint-text hidden">Kurucunun oyunu başlatması bekleniyor...</div>
+        </div>
+      </div>
+
+      <!-- Yerel Sekmesi -->
+      <div id="local-panel" class="tab-content">
+        <p class="center-text">Aynı klavyede 3 kişi karşılıklı kapışın! Hazırsanız doğrudan başlayın.</p>
+        <div style="text-align: center; margin-top: 15px;">
+          <button id="startLocalMatchBtn" class="start-btn">YEREL MAÇI BAŞLAT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Oyun Ekranı Arayüzü (HUD) -->
+    <div id="game-ui" class="game-ui-container hidden">
+      <!-- 3 Oyuncunun Can Barları -->
+      <div class="hud-3p">
+        <!-- P1 (Kırmızı) -->
+        <div class="hud-card p1-card">
+          <div class="player-header">
+            <span class="p-dot dot-red"></span>
+            <span class="p-title" id="p1-label">OYUNCU 1</span>
+          </div>
+          <div class="bar-frame health-bg">
+            <div class="health-fill p1-fill" id="p1-health" style="width: 100%;"></div>
+            <div class="health-delay" id="p1-health-delayed" style="width: 100%;"></div>
+          </div>
+          <div class="bar-frame energy-bg">
+            <div class="energy-fill p1-energy" id="p1-energy" style="width: 0%;"></div>
+          </div>
+          <div class="score-wins" id="p1-wins">🏆 0 Galibiyet</div>
+        </div>
+
+        <!-- Orta Round & Süre Bilgisi -->
+        <div class="center-round-box">
+          <div class="round-tag" id="round-text">ROUND 1</div>
+          <div class="timer-display" id="timer">99</div>
+          <div class="net-ping" id="net-badge">ONLINE</div>
+        </div>
+
+        <!-- P2 (Mavi) -->
+        <div class="hud-card p2-card">
+          <div class="player-header">
+            <span class="p-dot dot-blue"></span>
+            <span class="p-title" id="p2-label">OYUNCU 2</span>
+          </div>
+          <div class="bar-frame health-bg">
+            <div class="health-fill p2-fill" id="p2-health" style="width: 100%;"></div>
+            <div class="health-delay" id="p2-health-delayed" style="width: 100%;"></div>
+          </div>
+          <div class="bar-frame energy-bg">
+            <div class="energy-fill p2-energy" id="p2-energy" style="width: 0%;"></div>
+          </div>
+          <div class="score-wins" id="p2-wins">🏆 0 Galibiyet</div>
+        </div>
+
+        <!-- P3 (Yeşil) -->
+        <div class="hud-card p3-card">
+          <div class="player-header">
+            <span class="p-dot dot-green"></span>
+            <span class="p-title" id="p3-label">OYUNCU 3</span>
+          </div>
+          <div class="bar-frame health-bg">
+            <div class="health-fill p3-fill" id="p3-health" style="width: 100%;"></div>
+            <div class="health-delay" id="p3-health-delayed" style="width: 100%;"></div>
+          </div>
+          <div class="bar-frame energy-bg">
+            <div class="energy-fill p3-energy" id="p3-energy" style="width: 0%;"></div>
+          </div>
+          <div class="score-wins" id="p3-wins">🏆 0 Galibiyet</div>
+        </div>
+      </div>
+
+      <!-- Canvas Dövüş Alanı -->
+      <div class="canvas-container">
+        <canvas id="gameCanvas" width="1152" height="648"></canvas>
+        <div id="banner-text" class="banner-overlay"></div>
+      </div>
+
+      <!-- Alt Tuş Rehberi & Çıkış -->
+      <div class="game-footer">
+        <div class="controls-overview">
+          <div class="ctrl-col" id="my-controls-display">
+            <strong>KONTROLLERİNİZ:</strong>
+            <span id="ctrl-hints">A/D: Yürü | W: Zıpla | S: Çök | F: Yumruk | G: Tekme | H: Ateş Topu | Space: Blok</span>
+          </div>
+        </div>
+        <div class="footer-actions">
+          <button id="toggleAudioBtn" class="small-action-btn">🔊 Ses</button>
+          <button id="leaveMatchBtn" class="small-action-btn leave-btn">Lobiye Dön</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Oyun Sonu Ekranı Modal -->
+    <div id="game-over-modal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <h1 id="winner-title">AYAKTA KALAN: OYUNCU 1!</h1>
+        <p id="winner-sub">Arenanın Şampiyonu Belli Oldu!</p>
+        <div class="modal-buttons">
+          <button id="nextRoundBtn" class="play-btn">SONRAKİ RAUNT</button>
+          <button id="returnLobbyBtn" class="secondary-btn">Lobiye Dön</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="network.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
