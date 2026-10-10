@@ -1,10 +1,19 @@
-# 🥊 CYBER STRIKE - 3 Kişilik Online Dövüş Arenası
+# 🥊 CYBER STRIKE & ⚽ HARAMBALL (HaxBall 2D) - 3 Kişilik Online Arena
 
-WebRTC (PeerJS) tabanlı, hiçbir harici sunucuya ihtiyaç duymadan doğrudan tarayıcılar arası (P2P) çalışan, **Netlify** ve **GitHub Pages** ile %100 uyumlu 3 kişilik online dövüş oyunu!
+WebRTC (PeerJS) tabanlı, hiçbir harici sunucuya ihtiyaç duymadan doğrudan tarayıcılar arası (P2P) çalışan, **Netlify** ve **GitHub Pages** ile %100 uyumlu 3 kişilik online dövüş ve HaxBall futbol oyunu!
 
 ---
 
-## 🚀 Netlify veya GitHub Pages ile Nasıl Yayına Alınır?
+## 🎮 İki Farklı Oyun Modu (Tek Tıkla Geçiş!):
+1. **🥊 CYBER STRIKE (Dövüş Arenası):** 3 kişilik serbest dövüş, ateş topları, platformlar, kombolar ve yumruk/tekmeler.
+2. **⚽ HARAMBALL (HaxBall 2D Futbol):** HaxBall stili yeşil stadyum, elastik top fiziği, disk oyuncular, kaleler ve şut çekme mekaniği! Kurucu lobiden istediği an modu değiştirebilir.
+
+---
+
+## 🔒 Oda Yönetimi & Güvenlik Özellikleri (HaxBall Tarzı):
+- **🔒 Odayı Kapat:** Kurucu tek tıkla odayı kapatabilir ve tüm oyuncuları güvenle lobiye yönlendirir.
+- **❌ Odadan At (Kick):** Kurucu lobide 2. veya 3. oyuncuyu istediği an odadan atabilir; boşalan slota yeni oyuncu veya bot atanır.
+- **🤖 Akıllı Bot Desteği:** Eksik oyuncular olduğunda hem dövüşte hem de Haramball futbolunda botlar aktif olarak oynar!
 
 Bu proje tamamen statik dosyalardan (`index.html`, `style.css`, `game.js`, `network.js`, `audio.js`) oluştuğu için **ücretsiz** ve **anında** yayına alabilirsiniz:
 

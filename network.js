@@ -313,6 +313,18 @@ class NetworkManager {
         } else if (data.type === 'ROOM_FULL') {
           this.log(`❌ Bu oda şu an tamamen dolu!`, 'error');
           alert('Bu oda dolu! Lütfen kurucunun birini çıkarmasını veya yeni oda açmasını isteyin.');
+        } else if (data.type === 'KICKED') {
+          this.log(`👢 Kurucu tarafından odadan atıldınız!`, 'error');
+          alert('Kurucu tarafından odadan atıldınız!');
+          this.disconnect();
+          location.reload();
+        } else if (data.type === 'ROOM_CLOSED') {
+          this.log(`🔒 Kurucu odayı kapattı.`, 'warn');
+          alert('Kurucu odayı kapattı.');
+          this.disconnect();
+          location.reload();
+        } else if (data.type === 'GAME_TYPE_CHANGE') {
+          if (this.onGameTypeChange) this.onGameTypeChange(data.gameType);
         }
       });
 
@@ -418,6 +430,53 @@ class NetworkManager {
         this.hostConn.send({ type: 'REQUEST_NEXT_ROUND' });
       } catch(e) {}
     }
+  }
+
+  // Kurucu: Belirli oyuncuyu odadan at
+  kickPlayer(playerId) {
+    if (!this.isHost) return;
+    const entry = this.connections.find(c => c.playerId === playerId);
+    if (entry && entry.conn) {
+      try { entry.conn.send({ type: 'KICKED' }); } catch(e) {}
+      setTimeout(() => {
+        try { entry.conn.close(); } catch(e) {}
+      }, 200);
+    }
+    this.connections = this.connections.filter(c => c.playerId !== playerId);
+    this.playerSlots[playerId].connected = false;
+    this.playerSlots[playerId].name = `Oyuncu ${playerId}`;
+    this.log(`👢 Oyuncu ${playerId} kurucu tarafından odadan atıldı.`, 'warn');
+    this.broadcastLobby();
+    if (this.onLobbyChange) this.onLobbyChange(this.playerSlots);
+  }
+
+  // Kurucu: Odayı tamamen kapat
+  closeRoom() {
+    if (!this.isHost) return;
+    this.log(`🔒 Oda kurucu tarafından kapatıldı.`, 'warn');
+    this.connections.forEach(entry => {
+      if (entry.conn && entry.conn.open) {
+        try { entry.conn.send({ type: 'ROOM_CLOSED' }); } catch(e) {}
+        try { entry.conn.close(); } catch(e) {}
+      }
+    });
+    this.disconnect();
+    this.roomCode = null;
+    this.isHost = false;
+    this.playerSlots[1].connected = false;
+    this.playerSlots[2].connected = false;
+    this.playerSlots[3].connected = false;
+    if (this.onLobbyChange) this.onLobbyChange(this.playerSlots);
+  }
+
+  // Kurucu: Oyun Modunu Herkese Dağıt (FIGHT veya HARAMBALL)
+  broadcastGameType(gameType) {
+    if (!this.isHost) return;
+    this.connections.forEach(entry => {
+      if (entry.conn && entry.conn.open) {
+        try { entry.conn.send({ type: 'GAME_TYPE_CHANGE', gameType }); } catch(e) {}
+      }
+    });
   }
 
   disconnect() {

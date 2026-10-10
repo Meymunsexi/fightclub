@@ -3,19 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CYBER STRIKE - 3 Kişilik Online Dövüş Arenası</title>
+  <title>CYBER STRIKE & HARAMBALL - 3 Kişilik Online Arena</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@600;700;900&display=swap" rel="stylesheet">
-  <!-- PeerJS WebRTC Kütüphanesi (Netlify / GitHub Pages için sıfır sunucu ile çalışır) -->
+  <!-- PeerJS WebRTC Kütüphanesi -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
   <div class="game-wrapper">
 
+    <!-- Üst Oyun Seçici Navbar (Cyber Strike vs Haramball) -->
+    <div class="game-switcher-bar">
+      <button id="btnSwitchCyber" class="game-switch-tab active">🥊 CYBER STRIKE (DÖVÜŞ)</button>
+      <button id="btnSwitchHaramball" class="game-switch-tab">⚽ HARAMBALL (HAXBALL FUTBOL)</button>
+    </div>
+
     <!-- Lobi & Bağlantı Menüsü -->
     <div id="lobby-screen" class="lobby-card">
-      <h1 class="logo-text">CYBER STRIKE</h1>
-      <p class="tagline">🔥 3 Kişilik Online & Yerel Dövüş Arenası 🔥</p>
+      <h1 class="logo-text" id="main-logo-text">CYBER STRIKE</h1>
+      <p class="tagline" id="main-tagline-text">🔥 3 Kişilik Online & Yerel Dövüş Arenası 🔥</p>
 
       <div class="mode-select-tabs">
         <button id="tabOnlineBtn" class="tab-btn active">🌐 ONLİNE MOD (PEER-TO-PEER)</button>
@@ -37,7 +43,10 @@
                 <input type="text" id="myRoomCode" readonly>
                 <button id="copyCodeBtn" class="small-btn">Kodu Kopyala</button>
               </div>
-              <button id="copyLinkBtn" class="link-btn">🔗 Katılım Linkini Kopyala</button>
+              <div class="host-button-row">
+                <button id="copyLinkBtn" class="link-btn">🔗 Katılım Linkini Kopyala</button>
+                <button id="closeRoomBtn" class="danger-btn">🔒 Odayı Kapat</button>
+              </div>
               <div class="status-badge" id="hostStatus">Oyuncular bekleniyor...</div>
             </div>
           </div>
@@ -47,7 +56,7 @@
             <h3>🚀 ODAYA KATIL</h3>
             <p>Arkadaşının verdiği oda kodunu gir ve arenaya katıl!</p>
             <div class="input-row">
-              <input type="text" id="joinRoomCode" placeholder="Örn: CYBER-9821" maxlength="15">
+              <input type="text" id="joinRoomCode" placeholder="Örn: 48291" maxlength="15">
               <button id="joinRoomBtn" class="primary-btn">Katıl</button>
             </div>
             <div class="status-badge hidden" id="joinStatus">Bağlanıyor...</div>
@@ -65,11 +74,13 @@
             <div class="slot-avatar">🔵</div>
             <div class="slot-name">2. OYUNCU (MAVİ)</div>
             <div class="slot-role" id="slot-role-2">Boş</div>
+            <button class="kick-player-btn hidden" id="kickBtn-2">❌ Odadan At</button>
           </div>
           <div class="player-slot slot-p3" id="slot-3">
             <div class="slot-avatar">🟢</div>
             <div class="slot-name">3. OYUNCU (YEŞİL)</div>
             <div class="slot-role" id="slot-role-3">Boş</div>
+            <button class="kick-player-btn hidden" id="kickBtn-3">❌ Odadan At</button>
           </div>
         </div>
 
@@ -106,8 +117,9 @@
 
     <!-- Oyun Ekranı Arayüzü (HUD) -->
     <div id="game-ui" class="game-ui-container hidden">
-      <!-- 3 Oyuncunun Can Barları -->
-      <div class="hud-3p">
+
+      <!-- 1. Cyber Strike Dövüş HUD'ı -->
+      <div id="cyber-hud" class="hud-3p">
         <!-- P1 (Kırmızı) -->
         <div class="hud-card p1-card">
           <div class="player-header">
@@ -164,7 +176,23 @@
         </div>
       </div>
 
-      <!-- Canvas Dövüş Alanı -->
+      <!-- 2. Haramball Futbol HUD'ı -->
+      <div id="haramball-hud" class="haramball-scoreboard hidden">
+        <div class="team-score red-side">
+          <span class="team-name">🔴 KIRMIZI</span>
+          <span class="score-digit" id="hb-red-score">0</span>
+        </div>
+        <div class="stadium-middle">
+          <span class="hb-logo">⚽ HARAMBALL (HAXBALL)</span>
+          <span class="hb-timer" id="hb-timer">03:00</span>
+        </div>
+        <div class="team-score blue-side">
+          <span class="score-digit" id="hb-blue-score">0</span>
+          <span class="team-name">MAVİ 🔵</span>
+        </div>
+      </div>
+
+      <!-- Canvas Dövüş & Futbol Alanı -->
       <div class="canvas-container">
         <canvas id="gameCanvas" width="1152" height="648"></canvas>
         <div id="banner-text" class="banner-overlay"></div>
@@ -175,7 +203,7 @@
         <div class="controls-overview">
           <div class="ctrl-col" id="my-controls-display">
             <strong>KONTROLLERİNİZ:</strong>
-            <span id="ctrl-hints">🖱️ Sol Tık: Yumruk | 🖱️ Sağ Tık: Ağır Tekme | ⚙️ Orta Tık / Q: Ateş Topu | Space / Shift: Blok | W/A/S/D: Hareket</span>
+            <span id="ctrl-hints">🖱️ Sol Tık: Yumruk/Şut | 🖱️ Sağ Tık: Tekme | Space / Shift: Blok/Vuruş | W/A/S/D: Hareket</span>
           </div>
         </div>
         <div class="footer-actions">
@@ -200,6 +228,7 @@
   </div>
 
   <script src="audio.js"></script>
+  <script src="haramball.js"></script>
   <script src="network.js"></script>
   <script src="game.js"></script>
 </body>

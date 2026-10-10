@@ -27,6 +27,18 @@ const startLocalMatchBtn = document.getElementById('startLocalMatchBtn');
 const botToggle = document.getElementById('botToggle');
 const connectionLog = document.getElementById('connection-log');
 
+// Yeni Haramball ve Oda Yönetimi DOM Elemanları
+const btnSwitchCyber = document.getElementById('btnSwitchCyber');
+const btnSwitchHaramball = document.getElementById('btnSwitchHaramball');
+const mainLogoText = document.getElementById('main-logo-text');
+const mainTaglineText = document.getElementById('main-tagline-text');
+const closeRoomBtn = document.getElementById('closeRoomBtn');
+const kickBtn2 = document.getElementById('kickBtn-2');
+const kickBtn3 = document.getElementById('kickBtn-3');
+const cyberHud = document.getElementById('cyber-hud');
+const haramballHud = document.getElementById('haramball-hud');
+const hbTimerEl = document.getElementById('hb-timer');
+
 // HUD Elementleri (3 Oyuncu)
 const p1HealthBar = document.getElementById('p1-health');
 const p1HealthDelayed = document.getElementById('p1-health-delayed');
@@ -665,6 +677,7 @@ class GameManager {
   constructor() {
     this.mode = 'ONLINE'; // 'ONLINE' veya 'LOCAL'
     this.state = 'LOBBY'; // 'LOBBY', 'BANNER', 'FIGHTING', 'ROUND_OVER', 'MATCH_OVER'
+    this.gameType = 'FIGHT'; // 'FIGHT' veya 'HARAMBALL'
     this.currentRound = 1;
     this.timeLeft = 99;
     this.timerInterval = null;
@@ -677,20 +690,84 @@ class GameManager {
     gameUI.classList.remove('hidden');
     gameOverModal.classList.add('hidden');
 
+    if (this.gameType === 'HARAMBALL') {
+      cyberHud.classList.add('hidden');
+      haramballHud.classList.remove('hidden');
+      haramball.init();
+
+      if (this.mode === 'ONLINE') {
+        netBadge.textContent = 'HARAMBALL ONLINE';
+        const myId = network.localPlayerId;
+        ctrlHints.textContent = `P${myId} sensin! [W/A/S/D]: Koş | 🖱️ Sol Tık / Boşluk: ŞUT (Kick) ⚽`;
+      } else {
+        netBadge.textContent = 'HARAMBALL YEREL';
+        ctrlHints.textContent = `P1: WASD+Boşluk | P2: Oklar+K | P3: IJKL+U ⚽`;
+      }
+
+      this.startHaramballTimer();
+      this.showBanner('⚽ MAÇ BAŞLIYOR!', 1500, () => {
+        this.showBanner('BAŞLA!', 800, () => {
+          this.state = 'FIGHTING';
+          sounds.playFight();
+        });
+      });
+      return;
+    }
+
+    // CYBER STRIKE (DÖVÜŞ)
+    haramballHud.classList.add('hidden');
+    cyberHud.classList.remove('hidden');
+
     fighters.forEach(f => f.wins = 0);
     this.currentRound = 1;
 
-    // Kontrol ipucu güncellemesi
     if (this.mode === 'ONLINE') {
       netBadge.textContent = 'PEER-TO-PEER ONLINE';
       const myId = network.localPlayerId;
-      ctrlHints.textContent = `P${myId} sensin! [W/A/S/D]: Koş/Zıpla | [F]: Yumruk | [G]: Tekme | [H]: Özel Güç | [Space]: Blok`;
+      ctrlHints.textContent = `P${myId} sensin! 🖱️ Sol Tık: Yumruk | 🖱️ Sağ Tık: Tekme | Space/Shift: Blok | W/A/S/D: Hareket`;
     } else {
       netBadge.textContent = 'YEREL (AYNI KLAVYE)';
-      ctrlHints.textContent = `P1: WASD+F/G/H/Space | P2: Oklar+K/L/O/P | P3: IJKL+U/Y/T/N`;
+      ctrlHints.textContent = `P1: WASD+Mouse | P2: Oklar+KL | P3: IJKL+UY`;
     }
 
     this.startRound();
+  }
+
+  startHaramballTimer() {
+    clearInterval(this.timerInterval);
+    haramball.matchTime = 180;
+    this.updateHaramballTimerDisplay();
+
+    this.timerInterval = setInterval(() => {
+      if (this.state === 'FIGHTING') {
+        haramball.matchTime--;
+        this.updateHaramballTimerDisplay();
+        if (haramball.matchTime <= 0) {
+          this.onHaramballTimeUp();
+        }
+      }
+    }, 1000);
+  }
+
+  updateHaramballTimerDisplay() {
+    const mins = Math.floor(haramball.matchTime / 60).toString().padStart(2, '0');
+    const secs = (haramball.matchTime % 60).toString().padStart(2, '0');
+    if (hbTimerEl) hbTimerEl.textContent = `${mins}:${secs}`;
+  }
+
+  onHaramballTimeUp() {
+    this.state = 'ROUND_OVER';
+    clearInterval(this.timerInterval);
+
+    let winnerText = 'MAÇ BERABERE BİTTİ!';
+    if (haramball.redScore > haramball.blueScore) winnerText = '🔴 KIRMIZI TAKIM KAZANDI!';
+    else if (haramball.blueScore > haramball.redScore) winnerText = '🔵 MAVİ TAKIM KAZANDI!';
+
+    this.showBanner('MAÇ BİTTİ!', 1800, () => {
+      winnerTitle.textContent = winnerText;
+      winnerSub.textContent = `Skor: ${haramball.redScore} - ${haramball.blueScore}`;
+      gameOverModal.classList.remove('hidden');
+    });
   }
 
   startRound() {
@@ -1016,93 +1093,130 @@ function gameLoop() {
     if (screenShake < 0.2) screenShake = 0;
   }
 
-  drawArena();
+  // ================= ⚽ HARAMBALL (FUTBOL MODU) =================
+  if (gameManager.gameType === 'HARAMBALL') {
+    if (gameManager.mode === 'LOCAL') {
+      const localIn = collectLocalInputs();
+      haramball.applyInputs(0, localIn.p1);
+      haramball.applyInputs(1, localIn.p2);
+      haramball.applyInputs(2, localIn.p3);
+      haramball.updatePhysics();
+    } else if (gameManager.mode === 'ONLINE') {
+      const myInputs = collectLocalInputs();
+      if (network.isHost) {
+        haramball.applyInputs(0, myInputs);
 
-  // 1. Girdileri Yönet & Fizik Hesapla
-  if (gameManager.mode === 'LOCAL') {
-    const localIn = collectLocalInputs();
-    fighters[0].applyInputs(localIn.p1);
-    fighters[1].applyInputs(localIn.p2);
-    fighters[2].applyInputs(localIn.p3);
+        if (network.playerSlots[2].connected && gameManager.clientInputs[2]) {
+          haramball.applyInputs(1, gameManager.clientInputs[2]);
+        } else if (botToggle && botToggle.checked) {
+          haramball.applyInputs(1, haramball.getBotInput(1));
+        }
 
-    fighters.forEach(f => f.updatePhysics());
-    checkCombatCollisions();
-  } else if (gameManager.mode === 'ONLINE') {
-    const myInputs = collectLocalInputs();
+        if (network.playerSlots[3].connected && gameManager.clientInputs[3]) {
+          haramball.applyInputs(2, gameManager.clientInputs[3]);
+        } else if (botToggle && botToggle.checked) {
+          haramball.applyInputs(2, haramball.getBotInput(2));
+        }
 
-    if (network.isHost) {
-      // Host: Kendi girdilerini uygula
-      fighters[0].applyInputs(myInputs);
-
-      // P2: Gerçek oyuncu mu yoksa Bot mu?
-      if (network.playerSlots[2].connected && gameManager.clientInputs[2]) {
-        fighters[1].applyInputs(gameManager.clientInputs[2]);
-      } else if (botToggle && botToggle.checked) {
-        fighters[1].applyInputs(getBotInput(fighters[1], [fighters[0], fighters[2]]));
+        haramball.updatePhysics();
+        network.broadcastState({
+          isHaramball: true,
+          data: haramball.getSnapshot(),
+          time: haramball.matchTime
+        });
+      } else {
+        network.sendInputs(myInputs);
       }
+    }
 
-      // P3: Gerçek oyuncu mu yoksa Bot mu?
-      if (network.playerSlots[3].connected && gameManager.clientInputs[3]) {
-        fighters[2].applyInputs(gameManager.clientInputs[3]);
-      } else if (botToggle && botToggle.checked) {
-        fighters[2].applyInputs(getBotInput(fighters[2], [fighters[0], fighters[1]]));
-      }
+    haramball.draw();
+  }
+  // ================= 🥊 CYBER STRIKE (DÖVÜŞ MODU) =================
+  else {
+    drawArena();
+
+    // 1. Girdileri Yönet & Fizik Hesapla
+    if (gameManager.mode === 'LOCAL') {
+      const localIn = collectLocalInputs();
+      fighters[0].applyInputs(localIn.p1);
+      fighters[1].applyInputs(localIn.p2);
+      fighters[2].applyInputs(localIn.p3);
 
       fighters.forEach(f => f.updatePhysics());
       checkCombatCollisions();
+    } else if (gameManager.mode === 'ONLINE') {
+      const myInputs = collectLocalInputs();
 
-      // Durumu client'lara yayınla
-      const snapshot = {
-        timeLeft: gameManager.timeLeft,
-        fighters: fighters.map(f => f.getSnapshot()),
-        projectiles: projectiles.map(p => ({
-          x: Math.round(p.x),
-          y: Math.round(p.y),
-          direction: p.direction,
-          ownerId: p.ownerId,
-          color: p.color,
-          glowColor: p.glowColor
-        }))
-      };
-      network.broadcastState(snapshot);
-    } else {
-      // Client: Host'a tuşları gönder
-      network.sendInputs(myInputs);
+      if (network.isHost) {
+        fighters[0].applyInputs(myInputs);
+
+        if (network.playerSlots[2].connected && gameManager.clientInputs[2]) {
+          fighters[1].applyInputs(gameManager.clientInputs[2]);
+        } else if (botToggle && botToggle.checked) {
+          fighters[1].applyInputs(getBotInput(fighters[1], [fighters[0], fighters[2]]));
+        }
+
+        if (network.playerSlots[3].connected && gameManager.clientInputs[3]) {
+          fighters[2].applyInputs(gameManager.clientInputs[3]);
+        } else if (botToggle && botToggle.checked) {
+          fighters[2].applyInputs(getBotInput(fighters[2], [fighters[0], fighters[1]]));
+        }
+
+        fighters.forEach(f => f.updatePhysics());
+        checkCombatCollisions();
+
+        const snapshot = {
+          isHaramball: false,
+          timeLeft: gameManager.timeLeft,
+          fighters: fighters.map(f => f.getSnapshot()),
+          projectiles: projectiles.map(p => ({
+            x: Math.round(p.x),
+            y: Math.round(p.y),
+            direction: p.direction,
+            ownerId: p.ownerId,
+            color: p.color,
+            glowColor: p.glowColor
+          }))
+        };
+        network.broadcastState(snapshot);
+      } else {
+        network.sendInputs(myInputs);
+      }
     }
-  }
 
-  // 2. Mermileri Güncelle & Çiz
-  if (gameManager.mode === 'LOCAL' || network.isHost) {
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-      const proj = projectiles[i];
-      proj.update();
-      proj.draw();
+    // Mermileri Güncelle & Çiz
+    if (gameManager.mode === 'LOCAL' || network.isHost) {
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const proj = projectiles[i];
+        proj.update();
+        proj.draw();
 
-      if (proj.active) {
-        // Merminin diğer 2 oyuncuya çarpma kontrolü
-        for (const target of fighters) {
-          if (target.id !== proj.ownerId && target.isAlive) {
-            const targetRect = { x: target.x, y: target.y, width: target.width, height: target.height };
-            const projRect = { x: proj.x - proj.radius, y: proj.y - proj.radius, width: proj.radius * 2, height: proj.radius * 2 };
+        if (proj.active) {
+          for (const target of fighters) {
+            if (target.id !== proj.ownerId && target.isAlive) {
+              const targetRect = { x: target.x, y: target.y, width: target.width, height: target.height };
+              const projRect = { x: proj.x - proj.radius, y: proj.y - proj.radius, width: proj.radius * 2, height: proj.radius * 2 };
 
-            if (checkCollision(projRect, targetRect)) {
-              target.takeDamage(18, 9, true);
-              createParticles(proj.x, proj.y, proj.color, 20, 1.8);
-              proj.active = false;
-              break;
+              if (checkCollision(projRect, targetRect)) {
+                target.takeDamage(18, 9, true);
+                createParticles(proj.x, proj.y, proj.color, 20, 1.8);
+                proj.active = false;
+                break;
+              }
             }
           }
         }
-      }
 
-      if (!proj.active) projectiles.splice(i, 1);
+        if (!proj.active) projectiles.splice(i, 1);
+      }
+    } else {
+      projectiles.forEach(p => p.draw());
     }
-  } else {
-    // Client sadece mermileri çizer
-    projectiles.forEach(p => p.draw());
+
+    fighters.forEach(f => f.draw());
   }
 
-  // 3. Parçacıkları Güncelle & Çiz
+  // Ortak Parçacık Sistemi
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx;
@@ -1122,13 +1236,10 @@ function gameLoop() {
     }
   }
 
-  // 4. Dövüşçüleri Çiz
-  fighters.forEach(f => f.draw());
-
-  // 5. Mouse Nişangahı (Crosshair)
+  // Mouse Nişangahı (Crosshair)
   if (gameManager.state === 'FIGHTING' && mouse.x > 0 && mouse.y > 0) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.45)';
+    ctx.strokeStyle = gameManager.gameType === 'HARAMBALL' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 255, 204, 0.45)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2);
@@ -1142,7 +1253,10 @@ function gameLoop() {
 
   ctx.restore();
 
-  updateHUD();
+  if (gameManager.gameType === 'FIGHT') {
+    updateHUD();
+  }
+
   requestAnimationFrame(gameLoop);
 }
 
@@ -1190,6 +1304,15 @@ network.onInputReceived = (playerId, inputState) => {
 
 // Client: Host'tan gelen dünya durumunu senkronize et
 network.onStateUpdate = (payload) => {
+  if (payload.isHaramball) {
+    haramball.applySnapshot(payload.data);
+    if (payload.time) {
+      haramball.matchTime = payload.time;
+      gameManager.updateHaramballTimerDisplay();
+    }
+    return;
+  }
+
   gameManager.timeLeft = payload.timeLeft;
   timerEl.textContent = payload.timeLeft;
 
@@ -1218,7 +1341,7 @@ network.onLog = (msg, type = 'info') => {
   connectionLog.scrollTop = connectionLog.scrollHeight;
 };
 
-// Lobi Güncellemesi (Slotların doluluğu ve Botlar)
+// Lobi Güncellemesi (Slotların doluluğu, Kick Butonları ve Botlar)
 network.onLobbyChange = (slots) => {
   const isBotActive = botToggle && botToggle.checked;
 
@@ -1238,6 +1361,18 @@ network.onLobbyChange = (slots) => {
     }
   }
 
+  // Odadan At Butonlarını Sadece Kurucuya Göster
+  if (network.isHost) {
+    if (slots[2] && slots[2].connected) kickBtn2.classList.remove('hidden');
+    else kickBtn2.classList.add('hidden');
+
+    if (slots[3] && slots[3].connected) kickBtn3.classList.remove('hidden');
+    else kickBtn3.classList.add('hidden');
+  } else {
+    kickBtn2.classList.add('hidden');
+    kickBtn3.classList.add('hidden');
+  }
+
   const connectedCount = Object.values(slots).filter(s => s.connected).length;
   // Botlar açıksa kurucu tek başına bile başlatabilir; kapalıysa en az 2 kişi gerekir
   if (network.isHost) {
@@ -1246,10 +1381,10 @@ network.onLobbyChange = (slots) => {
       const botCount = 3 - connectedCount;
       if (botCount > 0 && isBotActive) {
         hostStatus.textContent = `${connectedCount} Oyuncu + ${botCount} Bot Hazır!`;
-        startOnlineMatchBtn.textContent = `DÖVÜŞÜ BAŞLAT (${connectedCount}P + ${botCount} Bot)`;
+        startOnlineMatchBtn.textContent = `OYUNU BAŞLAT (${connectedCount}P + ${botCount} Bot)`;
       } else {
         hostStatus.textContent = `${connectedCount} / 3 Oyuncu Hazır!`;
-        startOnlineMatchBtn.textContent = 'DÖVÜŞÜ BAŞLAT!';
+        startOnlineMatchBtn.textContent = 'OYUNU BAŞLAT!';
       }
     }
   }
@@ -1385,6 +1520,59 @@ leaveMatchBtn.addEventListener('click', () => {
 toggleAudioBtn.addEventListener('click', () => {
   const isEnabled = sounds.toggle();
   toggleAudioBtn.textContent = isEnabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı';
+});
+
+// ================= ⚽ HARAMBALL MODU & ODA YÖNETİMİ EVENTLERİ =================
+function setGameMode(type) {
+  gameManager.gameType = type;
+  if (type === 'HARAMBALL') {
+    btnSwitchHaramball.classList.add('active');
+    btnSwitchCyber.classList.remove('active');
+    mainLogoText.textContent = 'HARAMBALL';
+    mainTaglineText.textContent = '⚽ 3 Kişilik Online HaxBall 2D Futbol Arenası ⚽';
+    ctrlHints.textContent = 'W/A/S/D: Koş | 🖱️ Sol Tık / Boşluk (Space): ŞUT (Kick) ⚽';
+  } else {
+    btnSwitchCyber.classList.add('active');
+    btnSwitchHaramball.classList.remove('active');
+    mainLogoText.textContent = 'CYBER STRIKE';
+    mainTaglineText.textContent = '🔥 3 Kişilik Online & Yerel Dövüş Arenası 🔥';
+    ctrlHints.textContent = '🖱️ Sol Tık: Yumruk | 🖱️ Sağ Tık: Ağır Tekme | Space/Shift: Blok | W/A/S/D: Hareket';
+  }
+}
+
+btnSwitchCyber.addEventListener('click', () => {
+  setGameMode('FIGHT');
+  if (network.isOnline && network.isHost) network.broadcastGameType('FIGHT');
+});
+
+btnSwitchHaramball.addEventListener('click', () => {
+  setGameMode('HARAMBALL');
+  if (network.isOnline && network.isHost) network.broadcastGameType('HARAMBALL');
+});
+
+network.onGameTypeChange = (type) => {
+  setGameMode(type);
+};
+
+// Odayı Kapat Butonu (Kurucu)
+closeRoomBtn.addEventListener('click', () => {
+  if (confirm('Odayı kapatmak ve tüm oyuncuları çıkarmak istediğinize emin misiniz?')) {
+    network.closeRoom();
+    location.reload();
+  }
+});
+
+// Odadan At Butonları (Kurucu)
+kickBtn2.addEventListener('click', () => {
+  if (confirm('2. Oyuncuyu (Mavi) odadan atmak istiyor musunuz?')) {
+    network.kickPlayer(2);
+  }
+});
+
+kickBtn3.addEventListener('click', () => {
+  if (confirm('3. Oyuncuyu (Yeşil) odadan atmak istiyor musunuz?')) {
+    network.kickPlayer(3);
+  }
 });
 
 // URL Parametresinden Otomatik Bağlanma (Tek Tıkla Giriş)
